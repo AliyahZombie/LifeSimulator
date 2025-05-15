@@ -1,167 +1,96 @@
 <template>
   <div class="w-full h-screen">
     <ChatView
-  v-for="(year, index) in localGameData.years"
-  :key="index"
-  :rawIndex="index"
-  :stream="index === localGameData.gameRuntime.year && stream ? stream : null"
-  :content="index !== localGameData.gameRuntime.year ? year.content : undefined"
-  :data="year.data"
-  @retry="processYear(true)"
-/>
-
+      v-for="year in localGameData.years"
+      :key="year.id"                            
+      :rawIndex="year.index"
+      :stream="year.index === localGameData.gameRuntime.year && stream ? stream : null"
+      :content="year.index !== localGameData.gameRuntime.year ? year.content : undefined"
+      :data="year.data"
+      @retry="processYear(true)"
+    />
   </div>
 </template>
 
 <script setup>
-import { ref, reactive, watch, onMounted, onUnmounted } from 'vue';
-import { getGameData, setGameData, clearGameData, addAYear } from '@/utils/gameData';
+import { ref, watchEffect } from 'vue';
+import { getGameData, setGameData } from '@/utils/gameData';
 import ChatView from './ChatView.vue';
 import { getModelInstance, readConfig } from '@/utils/ModelFactory';
 import { generateGamePrompt } from '@/Config';
 
-// 创建本地响应式数据
-const localGameData = ref(getGameData());
-const stream = ref("");
+/* ---------- 响应式全局数据 ---------- */
+const localGameData = ref(JSON.parse(JSON.stringify(getGameData())));
+const stream = ref('');
 
-// 创建一个函数来更新本地数据
-const updateLocalGameData = () => {
-  localGameData.value = getGameData();
-};
-
-
-// render test
-if(false)
-{addAYear({
-  content: '测试消息',
-  data: {},
-});
-addAYear({
-  content: '测试卡片渲染<card>测试</card>',
-  data: {},
-});
-addAYear({
-  content: '测试高亮渲染<highlight>测试</highlight>',
-  data: {},
-});
-addAYear({
-  content: '测试图片渲染<img src="https://example.com/image.jpg" alt="测试图片">',
-  data: {},
-});
-addAYear({
-  content: '测试链接渲染<a href="https://example.com">测试链接</a>',
-  data: {},
-});
-addAYear({
-  content: '测试不闭合卡片<card>测试',
-  data: {},
-});
-}
-
-// 设置一个定时器来检查gameData的变化
-let intervalId;
-onMounted(() => {
-  // 初始设置
-  updateLocalGameData();
-  
-  // 每100ms检查一次gameData是否有变化
-  intervalId = setInterval(updateLocalGameData, 100);
+/* 持久化：数据一改动就写回 localStorage */
+watchEffect(() => {
+  setGameData(localGameData.value);
 });
 
-onUnmounted(() => {
-  // 清除定时器
-  clearInterval(intervalId);
-});
-
-
-// {
-//         initConfig: {
-//             difficulty: difficulty.value,
-//             wise: attr1.value,
-//             health: attr2.value,
-//             family: attr3.value,
-//             luck: attr4.value,
-//             userName: userName.value,
-//             userDescription: userDescription.value,
-//             gender: 'male'
-//         }, 
-//         years: [
-//             {
-//                 content: 'Test message',
-//                 data: {
-//                     userAction: '',
-//                     
-//             },
-//            ],
-//         gameRuntime: {
-//             year: 0,
-//             event: [],
-//             status: {
-//                 wise: attr1.value,
-//                 health: attr2.value,
-//                 family: attr3.value,
-//                 luck: attr4.value
-//             }
-//         }
-//     }
-// Structurn Hint
-
-// ===========> Main Game Logic <==========
+/* ---------- 工具函数 ---------- */
 function getRandomInt(min, max) {
-    return Math.floor(Math.random() * (max - min + 1)) + min;
+  return Math.floor(Math.random() * (max - min + 1)) + min;
 }
 
-// init first game
-var gameData = getGameData();
-
-
-if (gameData.years.length === 0) {
-  var gender = getRandomInt(0, 1) === 0 ? 'male' : 'female';
-  gameData.initConfig.gender = gender;
-    gameData.years.push({
-        content: '你出生了, 是个'+(gender == 'male' ? '男孩' : '女孩'),
-        data: {
-            userAction: '',
-        },
-    });
-    gameData.gameRuntime.year = 1;
-    setGameData(gameData);
+/* 生成唯一年份对象 */
+function newYear({ content = '', data = {} } = {}) {
+  return {
+    id: crypto.randomUUID?.() || Date.now().toString(36) + Math.random().toString(36).slice(2),
+    index: localGameData.value.years.length,
+    content,
+    data,
+  };
 }
 
+/* ---------- 首次初始化 ---------- */
+if (localGameData.value.years.length === 0) {
+  const gender = getRandomInt(0, 1) ? 'male' : 'female';
+  localGameData.value.initConfig.gender = gender;
+  localGameData.value.years.push(
+    newYear({
+      content: `你出生了, 是个${gender === 'male' ? '男孩' : '女孩'}`,
+      data: { userAction: '' },
+    }),
+  );
+  localGameData.value.gameRuntime.year = 1;
+}
 
+/* ---------- 核心流程 ---------- */
 async function processYear(retry = false) {
   if (retry) {
-    // 如果是重试，则清除当前年份的内容
-    localGameData.value.gameRuntime.year -= 1;
-    localGameData.value.years.splice([localGameData.value.gameRuntime.year]);
-    setGameData(localGameData.value);
-    };
-  
-  addAYear({
-    content: '',
-    data: {
-        userAction: '',
-    },
-  });
-  var gameData = getGameData();
-  localGameData.value = gameData;
-  var modelStream = await (await getModelInstance(readConfig())).stream(generateGamePrompt(gameData)); 
+    // 删除当前这一年，回退指针
+    const cur = localGameData.value.gameRuntime.year - 1;
+    localGameData.value.years.splice(cur, 1);
+    localGameData.value.gameRuntime.year = cur;
+  }
+
+  /* 占位，让 ChatView 立即出现 */
+  localGameData.value.years.push(
+    newYear({
+      content: '',
+      data: { userAction: '' },
+    }),
+  );
+
+  /* 生成文案 */
+  const model = await getModelInstance(readConfig());
+  const gamePrompt = generateGamePrompt(JSON.parse(JSON.stringify(localGameData.value)));
+  const modelStream = await model.stream(gamePrompt);
+
   const chunks = [];
   for await (const chunk of modelStream) {
     chunks.push(chunk.content);
     stream.value = chunks.join('');
-    console.log(chunk.content);
   }
-  gameData.years[gameData.gameRuntime.year].content = stream.value;
-  gameData.gameRuntime.year += 1;
+
+  /* 写入结果 */
+  const lastYear = localGameData.value.years.at(-1);
+  lastYear.content = stream.value;
   stream.value = '';
-  setGameData(gameData);
+  localGameData.value.gameRuntime.year = lastYear.index + 1;
 }
 
-defineExpose({
-  processYear,
-});
-
-
-
+/* 提供给父组件的接口 */
+defineExpose({ processYear });
 </script>
