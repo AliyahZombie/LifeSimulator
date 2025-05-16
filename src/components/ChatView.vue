@@ -1,7 +1,9 @@
 <template>
   <div class="flex justify-center py-4">
     <!-- 卡片容器 -->
-    <div class="w-11/12 bg-white shadow-md rounded-lg p-4 overflow-hidden relative">
+    <div class="w-11/12 bg-white shadow-md rounded-lg p-4 overflow-hidden relative"
+    @click="handleInnerClick"
+    >
       <!-- 重试按钮 -->
       <button
         @click="$emit('retry',rawIndex)"
@@ -15,7 +17,7 @@
       </button>
 
       <!-- 索引 -->
-      <p class="text-gray/20">{{ rawIndex }}岁</p>
+      <p class="text-gray/20">Year: {{ rawIndex }}</p>
 
       <!-- 主内容 -->
       <div v-html="formattedContent" class="whitespace-pre-wrap"></div>
@@ -58,7 +60,7 @@ const props = defineProps({
   },
 });
 
-const emit = defineEmits(['retry']);
+const emit = defineEmits(['retry', 'button-click']);
 
 /* =====================
  *  状态 & 常量
@@ -68,6 +70,12 @@ const displayContent   = ref('');  // 已渲染文本
 const typingSpeed      = 20;       // 打字速度 (ms/char)
 let   typingTimerId    = null;     // 定时器 ID
 
+DOMPurify.addHook('uponSanitizeAttribute', (node, data) => {
+  if (data.attrName === 'data-action' || data.attrName === 'data-args') {
+    data.keepAttr = true;
+  }
+});
+
 /* =====================
  *  辅助函数
  * ===================== */
@@ -76,7 +84,9 @@ function formatSpecialContent(text) {
     .replace(/<card>/g,      '<div class="bg-gray-100 border border-gray-300 rounded p-2 my-2">')
     .replace(/<\/card>/g,    '</div>')
     .replace(/<highlight>/g, '<span class="bg-yellow-300">')
-    .replace(/<\/highlight>/g, '</span>');
+    .replace(/<\/highlight>/g, '</span>')
+    .replace(/<button /g, '<button class="w-full hover:bg-blue-300 transition-colors bg-blue-100 m-2 rounded-2xl"')
+    .replace(/<\/button>/g, '</button>');
 }
 
 function startTyping() {
@@ -112,6 +122,15 @@ watch(
   },
   { immediate: true }
 );
+
+// ③：事件委托函数
+function handleInnerClick(event) {
+  const btn = event.target.closest('button[data-action]');
+  if (!btn) return;
+  const action = btn.dataset.action;
+  const args = btn.dataset.args
+  emit('button-click', action, args);
+}
 
 /* =====================
  *  计算属性

@@ -8,6 +8,7 @@
       :content="year.index !== localGameData.gameRuntime.year ? year.content : undefined"
       :data="year.data"
       @retry="processYear(true)"
+      @button-click="handleClick"
     />
   </div>
 </template>
@@ -57,12 +58,25 @@ if (localGameData.value.years.length === 0) {
 }
 
 /* ---------- 核心流程 ---------- */
-async function processYear(retry = false) {
+function handleClick(action,args) {
+  if (action === 'retry') {
+    processYear(true);
+  } else if (action === 'choice') {
+    processYear(false, args);
+  }
+}
+
+async function processYear(retry = false, action= null) {
   if (retry) {
     // 删除当前这一年，回退指针
     const cur = localGameData.value.gameRuntime.year - 1;
     localGameData.value.years.splice(cur, 1);
     localGameData.value.gameRuntime.year = cur;
+  }
+  if (action) {
+    // 处理用户行为
+    const cur = localGameData.value.gameRuntime.year - 1;
+    localGameData.value.years[cur].data.userAction = action;
   }
 
   /* 占位，让 ChatView 立即出现 */

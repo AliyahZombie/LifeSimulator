@@ -58,10 +58,10 @@ const handleUserInput = () => {
   const input = userInput.value.trim();
   console.log('User input:', input);
   userInput.value = '';
-  setUserInputCurrentYear(input);
+  // setUserInputCurrentYear(input);
   console.log('Game data after user input:', getGameData());
   console.log(viewRef.value);
-  viewRef.value?.processYear();
+  viewRef.value?.processYear(false, input);
   
 }
 
